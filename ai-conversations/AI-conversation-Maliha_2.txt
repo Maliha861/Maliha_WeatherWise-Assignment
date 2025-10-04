@@ -1,0 +1,364 @@
+AI Conversation 2– Maliha Haque 
+Assignment Guideline 
+Tool: ChatGPT 
+Date: 29-09-2025 
+
+
+ME: I need a get_weather_data(location, forecast_days, units) function for wttr.in. How should I validate inputs?
+
+AI: Check location is a non-empty string, clamp forecast_days to wttr.in’s limit, and restrict units to known flags.
+
+if not isinstance(location, str) or not location.strip():
+    return {"error": "Please provide a valid location name."}
+
+try:
+    forecast_days = max(1, min(int(forecast_days), 3))  # wttr.in JSON gives up to 3 days
+except Exception:
+    forecast_days = 3
+
+if units not in ("m", "u", "M"):
+    units = "m"
+
+
+ME: When the API is slow or returns an error page, my code crashes. How should I return results vs errors?
+
+AI: Always return a dict. Wrap the request in try/except, add a timeout, call raise_for_status(), and map failures to friendly error messages.
+
+import requests
+
+try:
+    resp = requests.get(
+        f"https://wttr.in/{location}",
+        params={"format": "j1", units: ""},  # wttr.in uses flags like ?m or ?u
+        timeout=10,
+        headers={"User-Agent": "Weather-Advisor/1.0", "Accept": "application/json"}
+    )
+    resp.raise_for_status()
+    data = resp.json()
+except requests.exceptions.Timeout:
+    return {"error": "The weather service took too long to respond. Please try again shortly."}
+except requests.exceptions.ConnectionError:
+    return {"error": "Network connection error while contacting the weather service."}
+except requests.exceptions.HTTPError as e:
+    code = getattr(e.response, "status_code", "Unknown")
+    return {"error": f"Weather service returned an HTTP error (status {code})."}
+except ValueError:
+    return {"error": "Invalid JSON response from wttr.in."}
+
+
+ME: The raw JSON is messy. What schema should I return so my charts and NLP are simple?
+
+AI: Normalise to a small, stable dict with current and a daily forecast list.
+
+{
+  "location": location,
+  "current": {
+    "temp_c": int|None, "feels_like_c": int|None, "condition": str,
+    "humidity": int|None, "wind_kmph": int|None, "wind_dir": str,
+    "precip_mm": float|None, "uv_index": int|None
+  },
+  "forecast": [
+    {"date": "YYYY-MM-DD", "min_c": int|None, "max_c": int|None,
+     "chance_of_rain": int|None, "precip_mm": float|None},
+    ...
+  ]
+}
+
+
+ME: How do I safely cast numbers?
+
+AI: Use small helpers.
+
+def _safe_int(x, default=None):
+    try: return int(x)
+    except: return default
+
+def _safe_float(x, default=None):
+    try: return float(x)
+    except: return default
+
+
+ME: wttr.in has hourly slots. How do I compute daily chance_of_rain and precip_mm?
+
+AI: Use the max of hourly chanceofrain and sum of hourly precipMM.
+
+current_raw = (data.get("current_condition") or [{}])[0]
+current = {
+    "temp_c": _safe_int(current_raw.get("temp_C")),
+    "feels_like_c": _safe_int(current_raw.get("FeelsLikeC")),
+    "condition": ((current_raw.get("weatherDesc") or [{}])[0].get("value")) or "N/A",
+    "humidity": _safe_int(current_raw.get("humidity")),
+    "wind_kmph": _safe_int(current_raw.get("windspeedKmph")),
+    "wind_dir": current_raw.get("winddir16Point") or "",
+    "precip_mm": _safe_float(current_raw.get("precipMM"), 0.0),
+    "uv_index": _safe_int(current_raw.get("uvIndex")),
+}
+
+forecast = []
+for day in (data.get("weather") or [])[:forecast_days]:
+    hourly = day.get("hourly") or []
+    chance = max((_safe_int(h.get("chanceofrain"), 0) for h in hourly), default=0)
+    precip = sum((_safe_float(h.get("precipMM"), 0.0) for h in hourly))
+    forecast.append({
+        "date": day.get("date"),
+        "min_c": _safe_int(day.get("mintempC")),
+        "max_c": _safe_int(day.get("maxtempC")),
+        "chance_of_rain": chance,
+        "precip_mm": round(precip, 1)
+    })
+
+
+
+
+ME: Sometimes keys are missing. How do I keep the loop safe and avoid crashes?
+
+AI: Always use .get(...) with defaults, iterate defensively, and return an error dict instead of raising.
+
+for day in (data.get("weather") or [])[:forecast_days]:
+    # use .get on every nested access and the _safe_* casters
+    ...
+# if the list ends up empty, return a friendly error (shown above)
+
+Me:
+I’m calling wttr.in but I keep getting errors. Here’s my code and what I see:
+
+# initial attempt
+import requests
+
+def get_weather_data(location, forecast_days=5):
+    url = f"https://wttr.in/{location}?format=j1"
+    r = requests.get(url)            # no timeout, no status check
+    data = r.json()                  # crashes if response is not valid JSON
+    return data                      # returns raw API (not normalised)
+
+
+Errors: json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+and sometimes:
+requests.exceptions.Timeout: The read operation timed out
+
+
+AI:
+
+requests.get has no timeout, so it can hang until the server responds (or the socket gives up much later).
+
+You never call raise_for_status(). If the server returns an HTTP error (e.g., 503) or a rate-limit page (often HTML), r.json() will try to parse non-JSON and raise JSONDecodeError.
+You accept forecast_days=5, but wttr.in’s JSON endpoint provides up to 3 days.
+You return the raw payload, which is noisy and inconsistent for your charts/UI.
+There’s no input validation for empty/invalid locations.
+
+Me:
+Can you explain that in easier terms?
+
+AI:
+Your code is calling a website and assuming it always replies with perfect JSON. In real life, the site can be slow, down, or send an error page in HTML. Because you don’t set a timeout or check for HTTP errors, your code either hangs or tries to read HTML as JSON, which crashes. The fix is to add a timeout, check for HTTP errors, catch exceptions, and convert the raw data into a simple, consistent dictionary your app can use.
+
+Me:
+Could you help me fix it and give me a version that returns a clean structure for plotting and the CLI?
+
+AI (improved code):
+
+# Weather Data Functions — final version for wttr.in (normalised output)
+
+import requests
+
+def _safe_int(x, default=None):
+    try:
+        return int(x)
+    except Exception:
+        return default
+
+def _safe_float(x, default=None):
+    try:
+        return float(x)
+    except Exception:
+        return default
+
+def get_weather_data(location, forecast_days=3, units="m"):
+    """
+    Retrieve weather data for a specified location from wttr.in and normalise it.
+
+    Args:
+        location (str): City or location name.
+        forecast_days (int): Number of days to forecast (1–5). wttr.in returns up to 3 days.
+        units (str): Unit system ("m" = metric, "u" = US, "M" = metric + m/s wind).
+
+    Returns:
+        dict: Normalised weather data including current conditions and forecast,
+              or an error dictionary if the request fails.
+    """
+    if not location or not isinstance(location, str):
+        return {"error": "Please provide a valid location name."}
+
+    # wttr.in JSON provides up to 3 days, so cap forecast_days here
+    forecast_days = max(1, min(int(forecast_days), 3))
+
+    base_url = f"https://wttr.in/{location}"
+    params = {"format": "j1"}
+    if units in ("m", "u", "M"):
+        params[units] = ""  # wttr.in uses flags for unit selection
+
+    try:
+        response = requests.get(
+            base_url,
+            params=params,
+            timeout=10,
+            headers={
+                "User-Agent": "Weather-Advisor/1.0 (Student Project)",
+                "Accept": "application/json",
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.Timeout:
+        return {"error": "The weather service took too long to respond. Please try again shortly."}
+    except requests.exceptions.ConnectionError:
+        return {"error": "Network connection error while contacting the weather service."}
+    except requests.exceptions.HTTPError as e:
+        code = getattr(e.response, "status_code", "Unknown")
+        return {"error": f"Weather service returned an HTTP error (status {code})."}
+    except requests.exceptions.RequestException:
+        return {"error": "Unexpected network error occurred while fetching weather data."}
+    except ValueError:
+        return {"error": "Invalid JSON response from wttr.in."}
+
+    # Parse current conditions
+    current_data = (data.get("current_condition") or [{}])[0]
+    current = {
+        "temp_c": _safe_int(current_data.get("temp_C")),
+        "feels_like_c": _safe_int(current_data.get("FeelsLikeC")),
+        "condition": ((current_data.get("weatherDesc") or [{}])[0].get("value")) or "N/A",
+        "humidity": _safe_int(current_data.get("humidity")),
+        "wind_kmph": _safe_int(current_data.get("windspeedKmph")),
+        "wind_dir": current_data.get("winddir16Point") or "",
+        "precip_mm": _safe_float(current_data.get("precipMM"), 0.0),
+        "uv_index": _safe_int(current_data.get("uvIndex")),
+    }
+
+    # Parse forecast data (up to 3 days)
+    forecast_list = []
+    for day in (data.get("weather") or [])[:forecast_days]:
+        hourly = day.get("hourly") or []
+        chance_of_rain = max((_safe_int(h.get("chanceofrain"), 0) for h in hourly), default=0)
+        total_precip = sum((_safe_float(h.get("precipMM"), 0.0) for h in hourly))
+        forecast_list.append({
+            "date": day.get("date"),
+            "min_c": _safe_int(day.get("mintempC")),
+            "max_c": _safe_int(day.get("maxtempC")),
+            "chance_of_rain": chance_of_rain,
+            "precip_mm": round(total_precip, 1)
+        })
+
+    if not forecast_list:
+        return {"error": "No forecast data returned for this location."}
+
+    return {
+        "location": location,
+        "current": current,
+        "forecast": forecast_list
+    }
+
+
+AI:
+
+Timeout + specific errors stop hangs and give clear feedback (timeout, connection error, HTTP status, bad JSON).
+
+raise_for_status() catches non-200 responses early.
+
+Validation + clamping keep inputs reasonable and consistent with wttr.in limits (max 3 days for JSON).
+
+Normalised schema (current + forecast with min_c, max_c, chance_of_rain, precip_mm) makes your charts and UI straightforward and robust.
+
+
+Me: Can you show the full function with these pieces put together?
+
+AI:
+
+import requests
+
+def _safe_int(x, default=None):
+    try: return int(x)
+    except: return default
+
+def _safe_float(x, default=None):
+    try: return float(x)
+    except: return default
+
+def get_weather_data(location, forecast_days=3, units="m"):
+    if not isinstance(location, str) or not location.strip():
+        return {"error": "Please provide a valid location name."}
+
+    try:
+        forecast_days = max(1, min(int(forecast_days), 3))  # wttr.in JSON limit
+    except Exception:
+        forecast_days = 3
+
+    if units not in ("m", "u", "M"):
+        units = "m"
+
+    try:
+        resp = requests.get(
+            f"https://wttr.in/{location}",
+            params={"format": "j1", units: ""},
+            timeout=10,
+            headers={"User-Agent": "Weather-Advisor/1.0", "Accept": "application/json"}
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.exceptions.Timeout:
+        return {"error": "The weather service took too long to respond. Please try again shortly."}
+    except requests.exceptions.ConnectionError:
+        return {"error": "Network connection error while contacting the weather service."}
+    except requests.exceptions.HTTPError as e:
+        code = getattr(e.response, "status_code", "Unknown")
+        return {"error": f"Weather service returned an HTTP error (status {code})."}
+    except ValueError:
+        return {"error": "Invalid JSON response from wttr.in."}
+
+    current_raw = (data.get("current_condition") or [{}])[0]
+    current = {
+        "temp_c": _safe_int(current_raw.get("temp_C")),
+        "feels_like_c": _safe_int(current_raw.get("FeelsLikeC")),
+        "condition": ((current_raw.get("weatherDesc") or [{}])[0].get("value")) or "N/A",
+        "humidity": _safe_int(current_raw.get("humidity")),
+        "wind_kmph": _safe_int(current_raw.get("windspeedKmph")),
+        "wind_dir": current_raw.get("winddir16Point") or "",
+        "precip_mm": _safe_float(current_raw.get("precipMM"), 0.0),
+        "uv_index": _safe_int(current_raw.get("uvIndex")),
+    }
+
+    forecast = []
+    for day in (data.get("weather") or [])[:forecast_days]:
+        hourly = day.get("hourly") or []
+        chance = max((_safe_int(h.get("chanceofrain"), 0) for h in hourly), default=0)
+        precip = sum((_safe_float(h.get("precipMM"), 0.0) for h in hourly))
+        forecast.append({
+            "date": day.get("date"),
+            "min_c": _safe_int(day.get("mintempC")),
+            "max_c": _safe_int(day.get("maxtempC")),
+            "chance_of_rain": chance,
+            "precip_mm": round(precip, 1)
+        })
+
+    if not forecast:
+        return {"error": "No forecast data returned for this location."}
+
+    return {"location": location, "current": current, "forecast": forecast}
+
+
+Quick tests
+
+Me: How do I demonstrate that it works and also show a graceful failure?
+
+AI:
+
+# Valid input
+ok = get_weather_data("Perth", 3, "m")
+print("OK:", type(ok), list(ok.keys()))
+
+# Invalid city / empty input
+bad = get_weather_data("", 3, "m")
+print("BAD:", bad)
+
+ME: Great—that covers everything. Thanks.
+

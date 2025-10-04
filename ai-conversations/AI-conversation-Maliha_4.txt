@@ -1,0 +1,499 @@
+AI Conversation 4– Maliha Haque 
+Assignment Guideline 
+Tool: ChatGPT 
+Date: 04-10-2025 
+
+Me: This is my NLP. Can you help me provide an analysis of my code, identify strengths and suggest any areas for improvement?
+
+ # Natural Language Processing — minimal fixes applied to your version
+
+import re
+
+# --- Internal helpers for NLP ---
+
+_ATTR_ALIASES = {
+    "rain": ["rain", "precip", "precipitation", "shower", "wet"],
+    "temperature": ["temp", "temperature", "hot", "cold", "warm", "cool", "heat"],
+    "wind": ["wind", "breeze", "gust"],
+    "humidity": ["humidity", "humid"],
+}
+
+def _detect_attribute(q: str) -> str | None:
+    ql = q.lower()
+    for key, words in _ATTR_ALIASES.items():
+        if any(w in ql for w in words):
+            return key
+    return None
+
+def _detect_days_and_when(q: str) -> tuple[int, str]:
+    """
+    Returns (days, when_label)
+      when_label in {"today","tomorrow","next"}
+      days is clamped to 1..3 (wttr.in returns up to 3 days)
+    """
+    ql = q.lower()
+    if "today" in ql:
+        return (1, "today")
+    if "tomorrow" in ql:
+        return (2, "tomorrow")  # ensures index 1 is available in responder
+
+    # Allow "next N day" or "next N days"
+    m = re.search(r"\bnext\s+(\d+)\s+day(?:s)?\b", ql)
+    if m:
+        n = int(m.group(1))
+        return (max(1, min(n, 3)), "next")
+
+    # default window
+    return (3, "next")
+
+def _detect_location(q: str, fallback: str | None = None) -> str | None:
+    """
+    Extract a simple location after 'in' or 'for'.
+    Example: 'Will it rain tomorrow in Perth?' -> 'Perth'
+    """
+    m = re.search(r"\b(?:in|for)\s+([A-Za-z][A-Za-z\s,.'-]{1,48})\b", q, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return fallback
+
+# --- Public API ---
+
+def parse_weather_question(question: str, default_location: str | None = None) -> dict:
+    """
+    Parse a natural-language weather question into structured intent.
+
+    Returns:
+        dict with keys:
+          "location": str|None,
+          "days": int (1..3),
+          "attribute": "rain"|"temperature"|"wind"|"humidity"|None,
+          "when": "today"|"tomorrow"|"next"
+    """
+    if not question or not isinstance(question, str):
+        return {"error": "Please provide a question string."}
+
+    attribute = _detect_attribute(question)
+    days, when = _detect_days_and_when(question)
+    # Use provided default or global DEFAULT_LOCATION if available
+    fallback_loc = default_location or globals().get("DEFAULT_LOCATION")
+    location = _detect_location(question, fallback=fallback_loc)
+
+    # Clamp defensively
+    days = max(1, min(int(days), 3))
+
+    return {"location": location, "days": days, "attribute": attribute, "when": when}
+
+def generate_weather_response(parsed: dict, weather_data: dict) -> str:
+    """
+    Generate a concise, human-readable answer from parsed intent and weather data.
+    """
+    if not parsed or ("error" in parsed):
+        return parsed.get("error", "I couldn't understand the question.")
+    if not weather_data or ("error" in weather_data):
+        return weather_data.get("error", "I couldn't retrieve weather data.")
+
+    loc = weather_data.get("location") or parsed.get("location") or "the requested location"
+    when = parsed.get("when", "next")
+    attr = parsed.get("attribute")
+
+    fcast = weather_data.get("forecast", [])
+    if not fcast:
+        return f"No forecast data available for {loc}."
+
+    # Select forecast window
+    if when == "today":
+        window = fcast[:1]
+    elif when == "tomorrow":
+        window = fcast[1:2] if len(fcast) >= 2 else fcast[:1]
+    else:
+        window = fcast[:max(1, min(parsed.get("days", len(fcast)), len(fcast)))]
+
+    # Aggregations (defensive)
+    def _min_val(k):
+        vals = [d.get(k) for d in window if d.get(k) is not None]
+        return min(vals) if vals else None
+
+    def _max_val(k):
+        vals = [d.get(k) for d in window if d.get(k) is not None]
+        return max(vals) if vals else None
+
+    def _sum_val(k):
+        vals = [d.get(k) or 0 for d in window]
+        return sum(vals) if vals else 0
+
+    hi = _max_val("max_c")
+    lo = _min_val("min_c")
+    rainp = _max_val("chance_of_rain")
+    precip = _sum_val("precip_mm")
+
+    # Attribute-specific responses
+    if attr == "rain":
+        if len(window) == 1:
+            d0 = window[0].get("date", "the day")
+            rp = window[0].get("chance_of_rain")
+            pm = window[0].get("precip_mm")
+            rp_txt = f"{rp}%" if rp is not None else "unknown"
+            pm_txt = f"{pm} mm" if pm is not None else "unknown"
+            return f"In {loc} ({d0}), chance of rain is {rp_txt}, expected precipitation {pm_txt}."
+        rp_txt = f"{rainp}%" if rainp is not None else "unknown"
+        return (f"In {loc} over the next {len(window)} day(s), the maximum chance of rain is "
+                f"{rp_txt} with a total of {precip:.1f} mm expected.")
+
+    if attr == "temperature":
+        if len(window) == 1:
+            d0 = window[0].get("date", "the day")
+            return f"In {loc} ({d0}), expect a high near {hi}°C and a low around {lo}°C."
+        return (f"In {loc} over the next {len(window)} day(s), highs up to ~{hi}°C "
+                f"and lows down to ~{lo}°C.")
+
+    if attr == "wind":
+        c = weather_data.get("current", {})
+        ws = c.get("wind_kmph")
+        wd = c.get("wind_dir", "")
+        if ws is not None:
+            return f"In {loc} {when}, current winds are about {ws} km/h {wd}."
+        return f"In {loc} {when}, wind information is not available."
+
+    if attr == "humidity":
+        c = weather_data.get("current", {})
+        h = c.get("humidity")
+        if h is not None:
+            return f"In {loc} {when}, current humidity is approximately {h}%."
+        return f"In {loc} {when}, humidity information is not available."
+
+    # Generic fallback
+    cond = (weather_data.get("current") or {}).get("condition", "").lower() or "current conditions"
+    if len(window) == 1:
+        d0 = window[0].get("date", "the day")
+        return (f"In {loc} ({d0}), it is {cond} with a high near {hi}°C, low around {lo}°C, "
+                f"and up to {rainp if rainp is not None else 'unknown'}% chance of rain (≈{precip:.1f} mm total).")
+    return (f"In {loc} over the next {len(window)} day(s), expect {cond}, highs up to ~{hi}°C, "
+            f"lows near ~{lo}°C, and up to {rainp if rainp is not None else 'unknown'}% chance of rain (≈{precip:.1f} mm total).")
+
+AI:
+Here’s a clear review of your NLP code—what’s strong already, and what I’d tighten up. I’ve kept the suggestions concise and copy-pasteable so you can easily drop them into your notebook.
+
+Summary
+
+Your NLP layer is solid and practical for the rubric: it extracts attribute, location, and time window, clamps to wttr.in’s 3-day limit, and your response generator produces readable, defensive answers for several attributes. Nice work.
+
+Strengths
+
+Simple, robust parsing: _detect_attribute, _detect_days_and_when, _detect_location are easy to follow and don’t overfit.
+Plural-friendly “next N day(s)”: day(?:s)? avoids common misses.
+Good defaults: falls back to DEFAULT_LOCATION, clamps days to 1..3, and returns clear error messages.
+Defensive response generation: picks today/tomorrow/next window correctly, aggregates min/max/precip safely, and handles missing data with “unknown”.
+Human-readable outputs: concise sentences tailored to rain/temperature/wind/humidity, with a sensible generic fallback.
+
+Improvement opportunities (quick wins)
+1) Avoid accidental matches like “brain” → “rain”
+
+Right now attribute detection uses substring checks ("rain" in "brain" is true). Use word boundaries so you only match whole words/synonyms.
+
+Drop-in patch:
+
+# Replace _detect_attribute with regex-based matching
+_ATTR_PATTERNS = {
+    "rain":        r"\b(rain|shower[s]?|drizzle|precip(?:itation)?)\b",
+    "temperature": r"\b(temp(?:erature)?|hot|cold|warm|cool|heat)\b",
+    "wind":        r"\b(wind|breeze|gusts?)\b",
+    "humidity":    r"\b(humidity|humid)\b",
+}
+
+def _detect_attribute(q: str) -> str | None:
+    ql = q.casefold()  # more robust than lower() for Unicode
+    for key, pattern in _ATTR_PATTERNS.items():
+        if re.search(pattern, ql):
+            return key
+    return None
+
+2) Recognise more time phrases (weekend / tonight / day after tomorrow)
+
+Your code handles today/tomorrow/next N days—great. Many users ask “this weekend” or “tonight”. Add a couple of common phrases and pass a new label into the responder.
+
+Parser patch:
+
+from datetime import datetime
+
+def _detect_days_and_when(q: str) -> tuple[int, str]:
+    ql = q.casefold()
+
+    # common phrases
+    if "today" in ql:     return (1, "today")
+    if "tonight" in ql:   return (1, "tonight")    # treat as today (evening)
+    if "tomorrow" in ql:  return (2, "tomorrow")
+    if "day after tomorrow" in ql or "the day after tomorrow" in ql:
+        return (3, "day_after_tomorrow")  # lets responder pick index 2 if available
+
+    # weekend
+    if "weekend" in ql:
+        return (3, "weekend")
+
+    # next N days (supports numbers or words like "two"/"three")
+    WORD_NUMS = {"one":1,"two":2,"three":3}
+    m = re.search(r"\bnext\s+((\d+)|(" + "|".join(WORD_NUMS.keys()) + r"))\s+day(?:s)?\b", ql)
+    if m:
+        n = int(m.group(2)) if m.group(2) else WORD_NUMS[m.group(3)]
+        return (max(1, min(n, 3)), "next")
+
+    return (3, "next")
+
+
+Responder patch (handle new labels):
+
+from datetime import datetime
+
+# ... inside generate_weather_response after you fetch `fcast` ...
+when = parsed.get("when", "next")
+window = None
+
+if when == "today":
+    window = fcast[:1]
+elif when == "tomorrow":
+    window = fcast[1:2] if len(fcast) >= 2 else fcast[:1]
+elif when == "day_after_tomorrow":
+    window = fcast[2:3] if len(fcast) >= 3 else (fcast[1:2] if len(fcast) >= 2 else fcast[:1])
+elif when == "weekend":
+    # pick the first Sat/Sun in the forecast if present
+    chosen = []
+    for d in fcast:
+        try:
+            dt = datetime.strptime(d.get("date",""), "%Y-%m-%d")
+            if dt.weekday() in (5, 6):  # 5=Sat, 6=Sun
+                chosen.append(d)
+        except Exception:
+            continue
+    window = chosen or fcast[:1]
+elif when == "tonight":
+    window = fcast[:1]  # treat as today (no hourly granularity here)
+else:  # "next"
+    n = max(1, min(parsed.get("days", len(fcast)), len(fcast)))
+    window = fcast[:n]
+
+3) Slightly broader location capture
+
+You already support in|for. Adding at|near|around catches more phrasings (e.g., “near Perth”, “around Fremantle”). Also switch to casefold() for robust matching.
+
+Patch:
+
+def _detect_location(q: str, fallback: str | None = None) -> str | None:
+    m = re.search(
+        r"\b(?:in|for|at|near|around)\s+([A-Za-z][A-Za-z0-9\s,.'-]{1,48})\b",
+        q, re.IGNORECASE
+    )
+    return m.group(1).strip() if m else fallback
+
+4) Provider-aware clamp (optional, if you add a 5-day provider later)
+
+Right now you clamp to 3 (correct for wttr.in). If you later switch to a 5-day provider, make the clamp dynamic.
+
+Patch:
+
+def parse_weather_question(question: str, default_location: str | None = None, limit: int = None) -> dict:
+    # ...
+    days, when = _detect_days_and_when(question)
+    # limit defaults to global FORECAST_LIMIT or 3
+    max_days = limit or globals().get("FORECAST_LIMIT", 3)
+    days = max(1, min(int(days), max_days))
+    # ...
+
+Then call parse_weather_question(q, default_location=..., limit=5) when your provider supports 5.
+
+
+
+ME: Does it align with my rubric and requirements?
+
+AI: Yes—your NLP module meets the core rubric items and is well-aligned with the rest of your app. Here’s a quick rubric-by-rubric check plus small gaps to close for full polish.
+
+Rubric alignment (Natural Language Interface)
+
+Parses key info from questions – Pass
+parse_weather_question() returns a clean dict with location, days, attribute, and when. Errors return a clear message.
+
+Identifies locations in queries – Pass (basic)
+_detect_location() handles “in/for <place>”.
+Suggestion: add at/near/around, support word boundaries, and keep casefold() for robustness with mixed case and Unicode.
+
+Identifies time periods (today, tomorrow, etc.) – Pass (core)
+Handles today, tomorrow, and next N day(s) with clamping to 1–3 (wttr limit).
+Suggestion: consider a few common extras: weekend, tonight, day after tomorrow. (Your responder is already structured to accept these labels.)
+
+Identifies weather attributes (temperature, rain, etc.) – Pass
+Works for rain/temperature/wind/humidity.
+Suggestion: switch to word-boundary regex to avoid false matches (e.g., “brain”→“rain”), and consider adding a couple of extras if useful to you (e.g., “snow”, “uv”).
+
+Generates natural-sounding responses – Pass
+generate_weather_response() selects the correct window (today/tomorrow/next), aggregates safely, and produces clear sentences with graceful “unknown” fallbacks.
+
+Integration with other rubric sections
+
+Weather Data Component compatibility – Pass
+Your responder assumes the normalised schema from get_weather_data() and degrades gracefully when data is missing or the API errors.
+
+Edge cases & error handling – Pass
+Empty question → explicit error dict. No forecast → friendly message. Missing values → “unknown” instead of crashing.
+
+User Interface flow – Pass
+Your menu calls: question → parse_weather_question() → get_weather_data() (with days) → generate_weather_response(). This is exactly the logical flow examiners look for.
+
+Small, high-value improvements (optional, to maximise marks)
+
+Attribute matching with word boundaries (prevents “brain”→“rain”):
+
+_ATTR_PATTERNS = {
+    "rain": r"\b(rain|shower[s]?|drizzle|precip(?:itation)?)\b",
+    "temperature": r"\b(temp(?:erature)?|hot|cold|warm|cool|heat)\b",
+    "wind": r"\b(wind|breeze|gusts?)\b",
+    "humidity": r"\b(humidity|humid)\b",
+}
+def _detect_attribute(q: str) -> str | None:
+    ql = q.casefold()
+    for key, pat in _ATTR_PATTERNS.items():
+        if re.search(pat, ql): return key
+    return None
+
+
+Time phrases beyond the core (weekend, tonight, day after tomorrow) and a tiny responder branch for them.
+
+Broader location capture (in|for|at|near|around) and casefold() to handle casing/locale better.
+
+Provider-aware clamp (future-proofing)
+If you later add a 5-day provider, accept a limit (e.g., 5) and clamp days to that.
+
+Bottom line
+
+You meet the rubric requirements for the NLP component and the code is clean, defensive, and integrated. If you implement the small optional tweaks above, you’ll check a few extra “robustness” boxes and make the parser feel even smarter without adding complexity.
+
+
+
+ME: How can I create a visualisation function for me, showing the chart and clearly labelling the axes?
+
+AI: # Temperature visualisation: shows a chart with clearly labelled axes
+
+import matplotlib.pyplot as plt
+import math
+
+def create_temperature_visualisation(weather_data, output_type='display'):
+    """
+    Plot min/max daily temperatures with clear labels, legend, and grid.
+
+    Args:
+        weather_data (dict): Output from get_weather_data()
+        output_type (str): 'display' to show the chart, 'figure' to return the Figure
+
+    Returns:
+        matplotlib.figure.Figure or None
+    """
+    if not isinstance(weather_data, dict) or "error" in weather_data:
+        print(weather_data.get("error", "No data to plot."))
+        return None
+
+    rows = weather_data.get("forecast") or []
+    if not rows:
+        print("No forecast data to plot.")
+        return None
+
+    dates = [str(d.get("date", "")) for d in rows]
+    mins = []
+    maxs = []
+    for d in rows:
+        mn = d.get("min_c")
+        mx = d.get("max_c")
+        try:
+            mn = float(mn) if mn is not None else math.nan
+        except Exception:
+            mn = math.nan
+        try:
+            mx = float(mx) if mx is not None else math.nan
+        except Exception:
+            mx = math.nan
+        mins.append(mn); maxs.append(mx)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(dates, maxs, marker="o", label="Max Temp (°C)")
+    ax.plot(dates, mins, marker="o", label="Min Temp (°C)")
+
+    ax.set_title(f"Temperature Forecast — {weather_data.get('location', '')}")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Temperature (°C)")
+    ax.grid(True)
+    ax.legend()
+    plt.xticks(rotation=25)
+    plt.tight_layout()
+
+    if output_type == 'figure':
+        return fig
+    plt.show()
+    plt.close(fig)
+    return None
+
+Me: Can you please give me some example data that I can test the code successfully?
+
+AI: Here are some sample datasets that match your app’s schema. Use them to test your visualisation functions without calling the API.
+
+# SAMPLE A — Normal 3-day dataset (fully populated)
+
+weather_sample_ok = {
+    "location": "Perth",
+    "current": {
+        "temp_c": 23,
+        "feels_like_c": 25,
+        "condition": "Shower in vicinity",
+        "humidity": 57,
+        "wind_kmph": 30,
+        "wind_dir": "NW",
+        "precip_mm": 0.4,
+        "uv_index": 8
+    },
+    "forecast": [
+        {"date": "2025-10-04", "min_c": 15, "max_c": 21, "chance_of_rain": 100, "precip_mm": 4.4},
+        {"date": "2025-10-05", "min_c": 12, "max_c": 16, "chance_of_rain": 100, "precip_mm": 1.5},
+        {"date": "2025-10-06", "min_c": 10, "max_c": 19, "chance_of_rain":  0,  "precip_mm": 0.0}
+    ]
+}
+
+# SAMPLE B — Edge case dataset (some missing/None values to test robustness)
+
+weather_sample_edge = {
+    "location": "Perth",
+    "current": {
+        "temp_c": None,
+        "feels_like_c": None,
+        "condition": "Cloudy",
+        "humidity": None,
+        "wind_kmph": 12,
+        "wind_dir": "S",
+        "precip_mm": None,
+        "uv_index": None
+    },
+    "forecast": [
+        {"date": "2025-10-04", "min_c": None, "max_c": 20, "chance_of_rain": 80, "precip_mm": 2.0},
+        {"date": "2025-10-05", "min_c": 11,   "max_c": None, "chance_of_rain": None, "precip_mm": 0.0},
+        {"date": "2025-10-06", "min_c": 9,    "max_c": 18,  /* chance_of_rain missing */ "precip_mm": 0.5}
+    ]
+}
+
+# SAMPLE C — Minimal dataset (no "current" block, still valid for charts)
+
+weather_sample_min = {
+    "location": "Perth",
+    "current": {},
+    "forecast": [
+        {"date": "2025-10-04", "min_c": 14, "max_c": 22, "chance_of_rain": 40, "precip_mm": 0.6},
+        {"date": "2025-10-05", "min_c": 13, "max_c": 20, "chance_of_rain": 60, "precip_mm": 1.2},
+        {"date": "2025-10-06", "min_c": 12, "max_c": 19, "chance_of_rain": 10, "precip_mm": 0.0}
+    ]
+}
+
+Quick test calls
+# Use whichever sample you want to test:
+sample = weather_sample_ok  # or weather_sample_edge / weather_sample_min
+
+# Should render charts with clear labels/titles (if your functions are defined)
+create_temperature_visualisation(sample, output_type='display')
+create_precipitation_visualisation(sample, output_type='display')
+
+
+These cover: fully populated data, missing/None fields, and a minimal structure—so you can confirm your charts render and your “defensive” code paths work.
+
+

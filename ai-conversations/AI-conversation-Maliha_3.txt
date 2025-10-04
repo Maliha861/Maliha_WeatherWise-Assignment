@@ -1,0 +1,324 @@
+AI Conversation 3– Maliha Haque 
+Assignment Guideline 
+Tool: ChatGPT 
+Date: 29-09-2025 
+
+Me: Why does it not show a five-day forecast?
+
+AI:
+Short answer: because your data source (wttr.in JSON) only returns up to 3 days. Your function also intentionally clamps any request to that limit.
+
+What’s happening:
+
+The ?format=j1 endpoint provides a weather array with at most 3 daily entries.
+
+In your code, you cap the request so it can’t exceed what the API returns:
+
+# inside get_weather_data(...)
+forecast_days = max(1, min(int(forecast_days), 3))  # 5 -> 3
+
+So even if you call:
+
+wd = get_weather_data("Perth", forecast_days=5, units="m")
+len(wd["forecast"])  # will be 3
+
+Your options:
+
+Accept 3 days (most straightforward)
+
+Keep the clamp and label your UI/plots “3-Day Forecast”.
+
+Switch APIs if you truly need 5 days
+
+Use something like OpenWeatherMap’s “5 day / 3 hour” forecast (requires an API key), and adapt your parsing/plots.
+
+Demo-only 5 days
+
+For visuals/tests, you can feed a mock 5-day dictionary to your plotting functions, but note in your report that wttr.in JSON itself is limited to 3 days.
+
+If you stick with wttr.in (recommended for your current build), just keep your notebook wording consistent (e.g., “3-Day Forecast”).
+
+You said:
+What's the difference if I want to use 5 days forecast instead of 3 days? Can. you tell me what sort of changes i would have to bring?
+ChatGPT said:
+
+Short version: with wttr.in’s JSON (?format=j1), you can’t get more than 3 days. To show 5 days you must change your data source (or add a second provider) and adjust a few parts of your code. Here’s exactly what to change.
+
+What changes are needed for a 5-day forecast
+1) Data source choice
+
+Keep wttr.in → stays at 3 days. No change possible.
+
+Switch/add another provider that supports ≥5 days. Two common options:
+
+OpenWeatherMap 5-day/3-hour (needs API key).
+
+Open-Meteo daily forecast (no key, free).
+Either way, you’ll parse their response and normalise into your existing schema:
+
+{
+  "location": "...",
+  "current": {...},   # optional if provider doesn’t give current
+  "forecast": [
+    {"date": "YYYY-MM-DD", "min_c": ..., "max_c": ..., "chance_of_rain": ..., "precip_mm": ...},
+    ...
+  ]
+}
+
+2) Function signature and clamp
+
+In your current function you clamp to 3:
+
+forecast_days = max(1, min(int(forecast_days), 3))
+
+
+Change this to depend on provider:
+
+def get_weather_data(location, forecast_days=5, units="m", provider="wttr"):
+    provider_limit = 3 if provider == "wttr" else 5
+    forecast_days = max(1, min(int(forecast_days), provider_limit))
+
+3) Branch request/parse by provider
+
+Keep your existing wttr.in branch for 3 days. Add a second branch for the 5-day provider that aggregates to your schema.
+
+OpenWeatherMap example (outline):
+
+import os, requests
+from collections import defaultdict
+from datetime import datetime
+
+def _normalise_owm(location, raw, days=5):
+    buckets = defaultdict(list)  # date -> list of 3h entries
+    for slot in raw.get("list", []):
+        dt = datetime.fromtimestamp(slot["dt"])
+        day = dt.strftime("%Y-%m-%d")
+        buckets[day].append(slot)
+
+    daily = []
+    for day in sorted(buckets.keys())[:days]:
+        slots = buckets[day]
+        # temps already °C if you call OWM with units=metric
+        max_c = max(s["main"]["temp_max"] for s in slots)
+        min_c = min(s["main"]["temp_min"] for s in slots)
+        # precip: sum rain["3h"] across slots if present
+        precip_mm = 0.0
+        for s in slots:
+            precip_mm += s.get("rain", {}).get("3h", 0.0) or 0.0
+        # chance of rain: use max POP (0..1) across slots
+        cor = max((s.get("pop", 0) for s in slots), default=0) * 100
+
+        daily.append({
+            "date": day,
+            "min_c": round(min_c),
+            "max_c": round(max_c),
+            "chance_of_rain": int(round(cor)),
+            "precip_mm": round(float(precip_mm), 1),
+        })
+
+    return {
+        "location": location,
+        "current": {},        # OWM “forecast” endpoint doesn’t have current; you can leave {} or call their “weather” endpoint
+        "forecast": daily
+    }
+
+def _fetch_owm(location, days):
+    key = os.environ.get("OPENWEATHER_API_KEY")
+    if not key:
+        return {"error": "Missing OPENWEATHER_API_KEY in environment."}
+    try:
+        r = requests.get(
+            "https://api.openweathermap.org/data/2.5/forecast",
+            params={"q": location, "appid": key, "units": "metric"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return _normalise_owm(location, r.json(), days=days)
+    except requests.exceptions.Timeout:
+        return {"error": "The weather service took too long to respond. Please try again shortly."}
+    except requests.exceptions.ConnectionError:
+        return {"error": "Network connection error while contacting the weather service."}
+    except requests.exceptions.HTTPError as e:
+        code = getattr(e.response, "status_code", "Unknown")
+        return {"error": f"Weather service returned an HTTP error (status {code})."}
+    except Exception:
+        return {"error": "Unexpected error while fetching or parsing OpenWeatherMap data."}
+
+
+Then call from your main function:
+
+def get_weather_data(location, forecast_days=5, units="m", provider="wttr"):
+    # …validate location…
+    provider_limit = 3 if provider == "wttr" else 5
+    forecast_days = max(1, min(int(forecast_days), provider_limit))
+
+    if provider == "wttr":
+        # your existing wttr.in code (unchanged)
+        return _fetch_wttr(location, forecast_days, units)
+    else:
+        # new provider path (e.g., OWM)
+        return _fetch_owm(location, forecast_days)
+
+
+(If you prefer Open-Meteo, do a similar branch: request daily temps/precip fields and map to your schema.)
+
+4) NLP clamp and Settings menu
+
+Update your NLP clamp so it allows up to 5 when provider supports it:
+
+days = max(1, min(int(days), 5 if provider != "wttr" else 3))
+
+
+In your Settings UI, allow user to pick 1–5 only when provider supports it. Otherwise, show 1–3.
+
+5) Visualisations
+
+No code change required—your plotting functions already loop across however many forecast entries exist. They’ll simply render 5 points/bars instead of 3.
+
+6) Tests
+
+Add tests that call get_weather_data("Perth", forecast_days=5, provider="owm") and confirm len(forecast) == 5.
+
+Keep your existing tests for wttr to confirm it still returns up to 3.
+
+TL;DR checklist
+
+Add provider arg to get_weather_data.
+
+Clamp days to provider limit (3 for wttr, 5 for new provider).
+
+Implement a fetch/normalise branch for the 5-day provider (OWM or Open-Meteo).
+
+Allow 1–5 days in NLP/UI only when provider supports it.
+
+Keep the same normalised schema so your charts/UI don’t change.
+
+
+Me: Can you explain the changes you have made?
+
+AI: Here’s a clear rundown of what changed (and why), mapped to your notebook sections.
+
+1) Weather Data Functions (core change)
+
+What changed
+
+New argument: get_weather_data(location, forecast_days=5, units="m", provider="wttr")
+
+Provider-aware clamp:
+Before: forecast_days = max(1, min(int(forecast_days), 3))
+Now:
+
+provider_limit = 3 if provider == "wttr" else 5
+forecast_days = max(1, min(int(forecast_days), provider_limit))
+
+
+Second data path (optional): kept your existing wttr.in parsing (3-day), and added a second branch (e.g., OpenWeatherMap/Open-Meteo) that can produce 5 daily entries.
+
+Normalisation preserved: regardless of provider, we still return your stable schema:
+
+{
+  "location": "...",
+  "current": {...},            # may be {} if the provider endpoint lacks current
+  "forecast": [
+    {"date": "...", "min_c": ..., "max_c": ..., "chance_of_rain": ..., "precip_mm": ...},
+    ...
+  ]
+}
+
+Why
+
+wttr.in’s JSON only provides up to 3 days; to show 5 days you need a provider that actually supplies ≥5 days. The provider flag lets you switch without rewriting the rest of your app.
+
+2) New provider fetch + daily aggregation
+
+What changed
+
+Added a helper (e.g., _fetch_owm(...)) that calls the 5-day API and a normaliser (e.g., _normalise_owm(...)) that:
+
+groups 3-hourly slots by date,
+
+computes max_c/min_c,
+
+sums precip_mm,
+
+derives chance_of_rain (e.g., max POP × 100) per day,
+
+returns exactly your schema.
+
+Why
+
+Your visualisations and UI expect daily min/max/precip/chance. The aggregator converts the provider’s 3-hour data into your daily format, so no changes are needed downstream.
+
+3) Environment variable (only for API-keyed providers)
+
+What changed
+
+For OpenWeatherMap: os.environ.get("OPENWEATHER_API_KEY"). If missing, return a friendly error dict.
+
+Why
+
+Keeps secrets out of the notebook and satisfies the rubric’s requirement for safe key handling.
+
+4) NLP clamp (small adjustment)
+
+What changed
+
+When the user asks for “next N days”, we clamp to the provider limit (3 for wttr, 5 for others) instead of always 3.
+
+Why
+
+So “next 5 days” actually works when you’re on the 5-day provider, and still behaves safely on wttr.in.
+
+5) User Interface (Settings + flow)
+
+What changed
+
+In Settings, allow forecast_days up to provider_limit.
+
+(Optional) Add a provider selector (wttr vs owm/open-meteo).
+
+Everywhere you call get_weather_data(...), pass the chosen provider.
+
+Why
+
+Keeps the UX honest: users can pick 1–5 days only when the data source supports it; otherwise it’s 1–3.
+
+6) Visualisations (no logic change)
+
+What changed
+
+Nothing in the plotting functions. They already read from weather_data["forecast"] and will naturally render 3 or 5 points.
+
+Why
+
+We preserved your schema, so charts “just work” with more days.
+
+7) Tests (add one case)
+
+What changed
+
+Added/updated a test that calls:
+
+get_weather_data("Perth", forecast_days=5, provider="owm")
+
+and checks len(forecast) == 5.
+
+Kept your existing wttr tests to confirm <=3.
+
+Why
+
+Shows both paths behave as expected and handles rubric’s “graceful errors” (e.g., missing API key).
+
+What stays the same
+
+Your error handling style (friendly messages for timeout/connection/HTTP/JSON).
+Your normalised keys used by charts and the CLI.
+Your main app flow (parse → fetch → respond → visualise).
+
+What you gain
+
+A clean way to support 5 days without breaking your existing 3-day wttr.in flow.
+The ability to toggle providers while keeping the rest of the notebook unchanged.
+
+
+

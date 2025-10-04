@@ -1,0 +1,216 @@
+AI Conversation 5– Maliha Haque 
+Assignment Guideline 
+Tool: ChatGPT 
+Date: 04-10-2025 
+
+ME: What is the main idea for my reflection?
+
+AI:Why this is the main idea
+
+It shows growth from “beginner in Python” to “can build and justify a working app.”
+Centers on a repeatable problem-solving process (prompt → improve → test) rather than one-off code.
+Connects design choices to constraints (wttr.in’s 3-day limit) and to rubric outcomes.
+Demonstrates robustness (validation, timeouts, normalisation) — the main difference between demo code and assessable software.
+Points to focus on in the reflection
+
+Starting point: 
+Intentional prompting: how you restated tasks, asked for specific improvements (timeouts, input checks, schema), and iterated.
+Data handling: why you normalised wttr.in JSON to a stable schema for charts/UI; clamping to 1–3 days.
+Error resilience: what errors you hit (timeouts, JSON decode) and how try/except + raise_for_status() fixed them.
+Visualisation quality: titles, axis labels, legends, tick rotation; readability over fancy styling.
+NLP parsing: extracting attribute/location/time; simple regex with sensible defaults and “unknown” fallbacks.
+Testing strategy: sample datasets (OK/edge/minimal), live calls, and simple print-based checks to verify behavior.
+Trade-offs: choosing wttr.in (simple, no key) vs. 5-day providers; how you would extend with a provider flag later.
+
+User experience: menu flow with clear feedback; graceful messages for invalid inputs and API failures.
+Learning outcome: shift from “code that runs” to “code that degrades safely and is easy to maintain.”
+Evidence of academic integrity: you guided the AI with precise prompts, understood changes, and documented before/after.
+
+What you’d improve next: weekend/tonight NLP, provider-aware day limits, saving charts, basic caching.
+
+How it maps to the rubric
+Weather data: validated inputs, handled connection errors/timeouts, structured data for use.
+Visualisations: at least two charts, clear labels/titles/legends, handles missing data.
+NLP: identifies location/time/attribute, produces natural responses.
+UI: logical menu, feedback, handles invalid inputs.
+Organisation: clear sections, comments/docstrings, no unused code.
+
+Examples to reference briefly
+
+The JSONDecodeError/timeout you encountered and the fixed get_weather_data.
+The temperature and chance-of-rain charts with labels.
+A sample NLP query (“Will it rain tomorrow in Perth?”) → parsed dict → response string.
+
+ME: What is the overall overview of my assignment?
+
+AI:
+Overview
+
+Purpose: Build “Weather Advisor,” a Python application that fetches real weather data, normalises it, visualises forecasts, and answers plain-English weather questions—organised to meet the project rubric.
+
+Data Source & Normalisation: Uses wttr.in (?format=j1) for live data. Raw JSON is transformed into a stable schema:
+
+current: temp_c, feels_like_c, condition, humidity, wind_kmph, wind_dir, precip_mm, uv_index
+
+forecast[]: per-day date, min_c, max_c, chance_of_rain, precip_mm
+
+Forecast length is capped at 3 days (wttr.in JSON limit).
+
+Core Functions:
+
+get_weather_data(location, forecast_days, units): validated input, timeout, HTTP/JSON error handling, schema normalisation.
+
+create_temperature_visualisation(weather_data): min/max temperature line chart with titles, labels, legend, grid.
+
+create_precipitation_visualisation(weather_data): chance-of-rain bar chart with titles, labels, legend, grid.
+
+NLP: parse_weather_question(question, default_location), generate_weather_response(parsed, weather_data).
+
+Natural-Language Interface: Extracts attribute (rain/temperature/wind/humidity), location (“in/for …”), and time window (today/tomorrow/next N days). Produces concise responses with safe fallbacks (“unknown”) and correct day selection.
+
+User Interface (CLI): Menu built with pyinputplus:
+
+Change location, show current conditions, show 3-day forecast, render charts, ask a question, tweak settings (units, forecast days within limit).
+
+Clear feedback and graceful handling of invalid inputs.
+
+Error Handling & Validation: Timeouts, connection/HTTP/JSON errors mapped to friendly messages; defensive parsing prevents crashes on missing/invalid fields.
+
+Visualisation Quality: All charts include titles, axes labels, legends, and tick rotation; handle missing values; readable defaults.
+
+Testing & Examples: Live tests (Perth), negative tests (empty/unknown city), and sample datasets (OK/edge/minimal) to demonstrate functionality without relying on the network.
+
+Design Choices & Trade-offs: Chose wttr.in to avoid API keys and simplify integration; accepted 3-day limit. Documented how to extend to a 5-day provider (e.g., OpenWeatherMap/Open-Meteo) without changing downstream code (keep the same normalised schema).
+
+Rubric Alignment:
+Weather data retrieval + processing ✅ | Error handling + validation ✅ | Two+ visualisations with labels/legends ✅ | NLP extraction + natural responses ✅ | Menu-driven UI with feedback ✅ | Clear structure, comments, and no unused code ✅
+
+Limitations & Future Work: Weekend/tonight phrasing, provider-aware day limits (5-day source), optional caching, saving charts to files, additional attributes (UV, “feels-like” summaries).
+
+Outcome: A modular, robust weather app that meets the rubric by combining clean data handling, readable visuals, simple NLP, and a user-friendly CLI—plus a clear path to extend to 5-day forecasts.
+
+
+ME: What are the submission instructions?
+AI:
+Here’s exactly what you need to submit and how to submit it—pulled from your assignment brief:
+
+What to submit
+
+A GitHub repository containing all project files:
+
+Your Google Colab notebook (.ipynb)
+
+A README.md (overview + how to run)
+
+AI conversation logs as plain .txt files (named conversation1.txt, conversation2.txt, …)
+
+Any other supporting docs you choose
+Invite your instructor and keep the repo properly organised. 
+
+A ZIP of your entire GitHub repo uploaded to the LMS by the due date (make sure it extracts cleanly). 
+
+Required files must include: the notebook, documentation files, AI conversation text files, and a 300–500 word reflection on your development process. 
+
+Code & documentation quality expected
+
+Well-commented code with docstrings, consistent naming, and proper error handling. 
+
+GitHub usage: make regular, meaningful commits; final repo should show progress (target ~15+ commits). Include a clear README with run instructions. 
+
+AI conversation documentation (how to include your prompts)
+
+Save conversations as plain text (.txt), named sequentially; submit at least 5 significant conversations. 
+
+For each conversation, include a short header, clearly label speakers (“Me:”, “AI:”), include the full interaction, and add brief notes where helpful. Do not submit screenshots. Include at least one convo showing how you handled a problematic AI response. 
+
+If using non-chat tools (e.g., Copilot), follow the alternative logging/recording guidance in the brief. 
+
+Optional pre-submission test
+
+You may submit a preliminary notebook to the course testing service to check basic functionality and structure (optional but recommended). 
+
+Due date & integrity
+
+Due date: see the Assessment Schedule in your course materials.
+
+Academic integrity: you must be able to explain all parts of your code (including AI-assisted parts). The intentional prompting documentation is a critical assessed component. 
+
+If you follow the checklist above—GitHub repo (with notebook, README, AI logs, reflection), LMS ZIP, good code quality, and properly formatted AI conversations—you’ll meet the submission requirements.
+
+ME:
+How to create a .txt file?
+AI:
+
+Here are simple, copy-pasteable ways to make a .txt file, depending on where you’re working.
+
+In a Jupyter/Colab notebook (Python)
+from pathlib import Path
+
+# 1) Your conversation text
+log_text = """Title: Weather Advisor – Conversation 1
+Date: 2025-10-04
+Me: ...
+AI: ...
+"""
+
+# 2) Save as UTF-8 .txt inside a folder (ai_logs)
+folder = Path("ai_logs"); folder.mkdir(exist_ok=True)
+path = folder / "conversation1.txt"
+path.write_text(log_text, encoding="utf-8", newline="\n")
+print(f"Saved -> {path.resolve()}")
+
+
+Optional: download immediately in Google Colab
+
+# Only works in Google Colab
+from google.colab import files
+files.download("ai_logs/conversation1.txt")
+
+
+Reusable helper:
+
+from pathlib import Path
+
+def save_log(name: str, content: str, folder: str = "ai_logs") -> str:
+    p = Path(folder); p.mkdir(exist_ok=True)
+    out = p / f"{name}.txt"
+    out.write_text(content, encoding="utf-8", newline="\n")
+    return str(out.resolve())
+
+# Example
+save_log("conversation2", "Title: ...\nMe: ...\nAI: ...\n")
+
+Command line (Terminal / PowerShell)
+
+macOS/Linux (bash/zsh):
+
+mkdir -p ai_logs
+echo "My text content" > ai_logs/conversation1.txt
+
+
+Windows PowerShell:
+
+New-Item -ItemType Directory -Force -Path ai_logs | Out-Null
+Set-Content -Path ai_logs\conversation1.txt -Value "My text content" -Encoding UTF8
+
+GUI editors
+
+VS Code / Notepad / TextEdit:
+
+New File
+
+Paste your conversation
+
+Save As → choose “Plain Text (.txt)”
+
+Name like ai_logs/conversation1.txt
+
+Tips for your assignment logs
+
+Use plain text (no screenshots).
+
+Include a short header at the top: Title, Date, Context/Goal, Tool/Model if relevant.
+
+Name files sequentially: conversation1.txt, conversation2.txt, …
+
+Keep UTF-8 encoding and Unix newlines (\n) for compatibility.
