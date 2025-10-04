@@ -1,0 +1,365 @@
+AI Conversation 1– Maliha Haque 
+Assignment Guideline 
+Tool: ChatGPT 
+Date: 29-09-2025 
+
+ME:  I have attached my Assignment. I need to create a weather application called "Weather Advisor” in Python. Can you help me create a step-by-step guideline as to how I could do this? Also, how you should I approach this assignment to make sure I meet requirements of the rubrics? Keeping in mind, that I am still learning programming skills, I am not an expert yet so i need detailed guidelines. 
+
+AI: Awesome—let’s turn “Weather Advisor” into a clear, do-able plan. I’ll give you (1) a step-by-step build guide, (2) a rubric-aligned checklist so you don’t miss marks, and (3) simple templates  
+
+Step-by-step build guide (beginner friendly) 
+
+0) Decide your data source (start simple) 
+
+Use the Foundation option (fetch-my-weather) first so you can focus on your app logic; you can always extend later. Your app must: get weather for a user location, show current + forecast, and create ≥2 visualisations (e.g., temperature trend + precipitation).  
+
+You’ll also build a natural-language interface and a pyinputplus menu.  
+
+1) Create your repo & project skeleton 
+
+Repo: weather-advisor/ 
+
+notebook.ipynb (main Colab notebook) 
+
+README.md (how to run) 
+
+requirements.txt (fetch-my-weather, requests, matplotlib, pyinputplus) 
+
+conversations/ (conversation1.txt … conversation5.txt) 
+
+images/ (saved charts, optional) 
+
+Add a quick README with run steps and a short feature list. 
+
+The instructor expects a GitHub repo and LMS ZIP; include your AI conversation text files and a 300–500 word reflection.  
+
+2) Lay out the notebook sections first (this scores organisation marks) 
+
+Create markdown headings for each required section in this exact order; you’ll fill them as you go: 
+
+Setup & Configuration → imports, install cells 
+
+Weather Data Functions → get_weather_data 
+
+Visualisation Functions → two chart functions 
+
+Natural Language Processing → parse_weather_question 
+
+User Interface → menu with pyinputplus 
+
+Main Application Logic → ties everything together 
+
+Testing & Examples → demo cells & edge cases 
+(These section headings are specifically required.)  
+
+Tip: Add a short “What this section does” note under each header. That clarity is graded.  
+
+3) Implement get_weather_data(location, forecast_days=5) 
+
+This exact signature will be used by the test harness. Start with Foundation option (fetch-my-weather) and return a clean dict with: 
+
+location (string you queried), 
+
+current (temp, condition, precip), 
+
+forecast (list of days with date, min/max temp, precip probability). 
+
+Testing staff will also mock APIs; handle missing fields and failures gracefully; if you later use OpenWeatherMap, pull the key with os.environ.get("OPENWEATHER_API_KEY") and use requests.  
+
+The core function stubs you must implement are specified here (copy names exactly): get_weather_data, parse_weather_question, generate_weather_response, create_temperature_visualisation, create_precipitation_visualisation.  
+
+Beginner pattern (pseudocode): 
+
+def get_weather_data(location, forecast_days=5): 
+    # 1) call library/API 
+    # 2) if error or empty -> return {"error": "..."} 
+    # 3) normalise to: { "location": str, "current": {...}, "forecast": [ {...}, ... ] } 
+    # 4) slice forecast to forecast_days 
+    return data_dict 
+ 
+
+4) Build two visualisations 
+
+Create two separate functions that accept your processed dict and either display or return a matplotlib figure (match the stub names). Label axes and titles so they’re clear. 
+
+Suggestions: 
+
+create_temperature_visualisation: dates on X, min/max or avg temp on Y (line chart). 
+
+create_precipitation_visualisation: dates on X, chance/amount on Y (bar chart). 
+These directly satisfy the “≥2 visualisations” requirement.  
+
+ASSIGNMENT 
+
+5) Add simple natural-language understanding 
+
+Start intentionally small; support a few patterns well: 
+
+Location: “in Perth”, “for Sydney” 
+
+Time: “today”, “tomorrow”, “next 3 days” 
+
+Attribute: “temperature”, “rain”, “wind”, “humidity” 
+
+parse_weather_question(question) → return a dict like: 
+
+{"location": "Perth", "days": 3, "attribute": "rain", "when": "next"} 
+
+If something’s missing, set a default (e.g., user’s last location or ask via menu). 
+
+generate_weather_response(parsed, weather_data) 
+Use the parsed intent to compose a friendly sentence: 
+
+e.g., “In Perth, over the next 3 days you can expect light showers with highs ~23°C.” 
+
+These two functions fulfil the Natural Language Interface requirement.  
+
+6) Create the menu with pyinputplus 
+
+A simple looped menu that calls your core functions (don’t duplicate logic in the UI): 
+
+Set/Change location 
+
+Show current conditions 
+
+Show 3–5 day forecast + charts 
+
+“Ask a question” (free-text → parse → respond) 
+
+Exit 
+
+The spec explicitly allows either console menus with pyinputplus or widgets; whichever you choose, your UI should call your core functions.  
+
+7) “Main Application Logic” 
+
+Wire everything up: 
+
+Keep a state = {"location": "Perth", "forecast_days": 5}. 
+
+On each menu choice, call the right function(s) and print a tidy summary. 
+
+Offer to display or save the charts into images/. 
+
+8) Testing & edge cases (have explicit demo cells) 
+
+Make small, visible demos: 
+
+Valid location (“Perth”, 5-day forecast) 
+
+Invalid/typo location → graceful message (no crash) 
+
+Ask “Will it rain tomorrow in Fremantle?” → parsed → sensible answer 
+The assignment will test incomplete and error cases; show you handle them.  
+
+9) AI-conversation documentation (big marks here) 
+
+Create ≥5 TXT files (conversations/) that show you using intentional prompting strategies and before/after improvements. These are heavily weighted (45% combined across two rubric rows).  
+
+Also ensure you actually include the TXT files in submission; it’s listed under “Required Files.”  
+
+10) Final tidy-up for submission 
+
+Notebook matches the required section layout.  
+
+ASSIGNMENT 
+
+README explains setup and how to run. 
+
+Push to GitHub, then ZIP the repo for LMS.  
+
+ 
+
+ME:  Give me a summary table for all these. 
+
+Here’s a clean summary table of everything we discussed — from setup to final submission — so you can follow it like a roadmap for your “Weather Advisor” assignment 👇 
+
+ 
+
+🧭 Weather Advisor Assignment – Step-by-Step Summary Guide 
+
+Stage 
+
+What to Do 
+
+Key Tasks / Code Elements 
+
+Why It Matters (Rubric Link) 
+
+1. Project Setup 
+
+Create folder & GitHub repo 
+
+- notebook.ipynb  
+- README.md  
+- conversations/ (AI TXT files)  
+- requirements.txt  
+- images/ (optional) 
+
+✅ Required files & repo submission 
+
+2. Notebook Structure 
+
+Make 7 sections before coding 
+
+1️⃣ Setup & Configuration 
+2️⃣ Weather Data Functions 
+3️⃣ Visualisation Functions 
+4️⃣ NLP 
+5️⃣ User Interface 
+6️⃣ Main App Logic 
+7️⃣ Testing & Examples 
+
+✅ Organisation & readability (10%) 
+
+3. Weather Data Function 
+
+Implement get_weather_data(location, forecast_days=5) 
+
+- Use fetch-my-weather (beginner)  
+- Return dict: {location, current, forecast}  
+- Handle errors (invalid city, no data) 
+
+✅ Core functionality (15%)  
+✅ Technical implementation (10%) 
+
+4. Data Visualisation 
+
+Create 2 matplotlib charts 
+
+- create_temperature_visualisation()  
+- create_precipitation_visualisation()  
+- Label axes, title, legend 
+
+✅ Data visualisation requirement (15%) 
+
+5. Natural Language Processing 
+
+Build question → response pipeline 
+
+- parse_weather_question(question) → dict  
+- generate_weather_response(parsed, weather_data)  
+- Support: city, days, attribute, time words 
+
+✅ Natural language interface (15%) 
+
+6. User Menu 
+
+Build interactive CLI with pyinputplus 
+
+Menu options:  
+1️⃣ Set location  
+2️⃣ Show current weather  
+3️⃣ Forecast + charts  
+4️⃣ Ask a question  
+5️⃣ Exit 
+
+✅ User experience (10%) 
+
+7. Main App Logic 
+
+Connect all modules into a working app 
+
+- Store global state (location, days)  
+- Fetch, parse, visualise, respond  
+- Pretty print results 
+
+✅ Overall functionality 
+
+8. Testing & Edge Cases 
+
+Add demo cells 
+
+- Valid query test  
+- Invalid city test  
+- Question test  
+- Chart test 
+
+✅ Error handling & robustness 
+
+9. AI Conversations 
+
+Create ≥5 TXT logs 
+
+- Show prompting techniques  
+- Include “before” vs “after” improvements  
+- Explain why changes are better 
+
+✅ Intentional prompting (30%)  
+✅ Conversation quality (15%) 
+
+10. Final Checks & Submission 
+
+Tidy, review, and submit 
+
+- Notebook runs start to finish  
+- README explains setup/run  
+- Push to GitHub & ZIP for LMS  
+- Include reflection + conversations 
+
+✅ Meets all submission criteria 
+
+ 
+📊 Quick Rubric Coverage Table 
+Component 
+Marks 
+How to Achieve 
+Functionality 
+15% 
+Working weather retrieval, forecast, and 2 visualisations 
+Code Quality 
+10% 
+Clear functions, docstrings, readable structure 
+Notebook Organisation 
+10% 
+Follow 7-section structure with headings 
+User Experience 
+10% 
+Clear pyinputplus menu, error handling, friendly outputs 
+Intentional Prompting 
+30% 
+≥5 AI conversations, iterative improvements, prompting strategies 
+AI Conversation Quality 
+15% 
+Before/after examples, explain impact 
+Technical Implementation 
+10% 
+Correct function signatures, error handling, exceptions 
+
+ 
+
+🧑‍💻 Pro Tips (Beginner-Friendly) 
+
+✅ Start with Foundation option (library call) before moving to APIs. 
+✅ Write pseudocode for each function before coding. 
+✅ Test small pieces individually (fetch → chart → parse → respond). 
+✅ Keep AI conversation logs as you go, not at the end. 
+✅ Run notebook top-to-bottom before submitting to ensure no errors. 
+
+
+ME: I want to use the wttr.in API directly (e.g., https://wttr.in/Perth?format=j1) and return JSON weather data. I’m a beginner, so please explain each step clearly. 
+
+AI: 
+Sure! The steps are: 
+Use the requests library to call the API. 
+Parse the JSON response. 
+Extract useful fields (current condition, forecast dates, temperature, precipitation). 
+Return a clean dictionary so other parts of your program (charts, responses) can use it easily. 
+Here’s a first version: 
+import requests  
+def get_weather_data(location, forecast_days=5): 
+    url = f"https://wttr.in/{location}?format=j1" 
+    r = requests.get(url) 
+    data = r.json() 
+    return data 
+
+ 
+
+ME: This works but it’s too basic. I want the result to be structured (current weather + forecast) and also handle errors if the location is wrong or the network fails. So what can I do? 
+
+AI: 
+Got it! Let’s improve it. You’ll need to: 
+Add try/except for network errors. 
+Slice the forecast to 5 days. 
+Normalise the output into {"location": ..., "current": {...}, "forecast": [...]}. 
+
+ 
