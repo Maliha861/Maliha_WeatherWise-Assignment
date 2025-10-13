@@ -362,4 +362,6 @@ Add try/except for network errors.
 Slice the forecast to 5 days. 
 Normalise the output into {"location": ..., "current": {...}, "forecast": [...]}. 
 
+ME: ok. Thanks.
+
  
