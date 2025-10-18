@@ -427,6 +427,158 @@ def create_temperature_visualisation(weather_data, output_type='display'):
     plt.close(fig)
     return None
 
+Me: I want to improve my visualisation code by shading the area between them to highlight the daily range and by adding annotations for the hottest and coldest days. Please rewrite my code with these enhancements while keeping it simple.
+
+AI:# create_temperature_visualisation()
+
+import math
+import matplotlib.pyplot as plt
+
+def create_temperature_visualisation(weather_data, output_type='display'):
+    """
+    Create a clean, readable temperature visualisation (min/max °C line chart).
+    Adds shaded range and annotations for clarity.
+    """
+    # Validate input
+    if not isinstance(weather_data, dict):
+        raise TypeError("weather_data must be a dict as returned by get_weather_data().")
+    if "error" in weather_data:
+        print(weather_data["error"]); return None
+    if "forecast" not in weather_data or not weather_data["forecast"]:
+        print("No forecast data available to plot."); return None
+
+    # Extract data safely
+    dates, mins, maxs = [], [], []
+    for d in weather_data["forecast"]:
+        dates.append(str(d.get("date", "")))
+        try:
+            mn = float(d.get("min_temp", d.get("min_c", math.nan)))
+            mx = float(d.get("max_temp", d.get("max_c", math.nan)))
+        except (TypeError, ValueError):
+            mn, mx = math.nan, math.nan
+        mins.append(mn)
+        maxs.append(mx)
+
+    # Skip if all values invalid
+    if all(math.isnan(x) for x in mins+maxs):
+        print("No valid temperature data found.")
+        return None
+
+    # Build figure
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.fill_between(dates, mins, maxs, alpha=0.15, label="Daily Range")
+    ax.plot(dates, maxs, marker="o", linewidth=2, label="Max Temp (°C)")
+    ax.plot(dates, mins, marker="o", linewidth=2, label="Min Temp (°C)")
+
+    # Titles & labels
+    ax.set_title(f"Temperature Forecast — {weather_data.get('location','')}")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Temperature (°C)")
+
+    # Grid & style tweaks
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend(frameon=False)
+    plt.xticks(rotation=25)
+    plt.tight_layout()
+
+    # Optional annotations
+    try:
+        hottest = max(maxs)
+        coldest = min(mins)
+        hot_day = dates[maxs.index(hottest)]
+        cold_day = dates[mins.index(coldest)]
+        ax.annotate(f"Hottest: {hottest:.0f}°C", xy=(hot_day, hottest),
+                    xytext=(0, 10), textcoords="offset points", ha="center", fontsize=9)
+        ax.annotate(f"Coldest: {coldest:.0f}°C", xy=(cold_day, coldest),
+                    xytext=(0, -15), textcoords="offset points", ha="center", fontsize=9)
+    except Exception:
+        pass
+
+    if output_type == 'figure':
+        return fig
+    plt.show()
+    plt.close(fig)
+    return None
+
+Me: Create another Python function named `create_uv_visualisation(weather_data, output_type='display')` that visualises the current UV index on a horizontal gauge using WHO risk categories (Low, Moderate, High, Very High, Extreme). Also, use **matplotlib only**, show risk bands (0–12) with shaded spans, label the current UV value, and include short safety advice text. Handle missing or invalid gracefully and return or display the figure depending on `output_type`.
+
+AI: # ONE-CELL: UV Risk Gauge (WHO categories) — uses current['uv_index']
+
+import matplotlib.pyplot as plt
+
+def create_uv_visualisation(weather_data, output_type='display'):
+    """
+    Visualise current UV index on a horizontal gauge with WHO risk bands and brief advice.
+    Expects: weather_data['current']['uv_index'] (number).
+    """
+    # Validate
+    if not isinstance(weather_data, dict):
+        raise TypeError("weather_data must be a dict as returned by get_weather_data().")
+    if "error" in weather_data:
+        print(weather_data["error"]); return None
+    cur = weather_data.get("current") or {}
+    if "uv_index" not in cur:
+        print("No UV index available in current conditions."); return None
+
+    # UV value (clamped to 0–12 to cover '11+')
+    try:
+        uv = float(cur["uv_index"])
+    except (TypeError, ValueError):
+        print("UV index is not numeric."); return None
+    uv = max(0.0, min(uv, 12.0))
+
+    # WHO bands: (low, high, label)
+    bands = [
+        (0, 2,   "Low"),
+        (3, 5,   "Moderate"),
+        (6, 7,   "High"),
+        (8, 10,  "Very High"),
+        (11, 12, "Extreme")
+    ]
+
+    def label_for(v):
+        for lo, hi, name in bands:
+            if lo <= v <= hi:
+                return name
+        return "Extreme"
+
+    advice = {
+        "Low": "Sensible: sunglasses on bright days.",
+        "Moderate": "SPF 30+, hat, sunglasses; seek shade at midday.",
+        "High": "SPF 50+, cover up; shade 10–4.",
+        "Very High": "SPF 50+, cover up; reapply often.",
+        "Extreme": "Avoid midday sun; SPF 50+; cover up.",
+    }[label_for(uv)]
+
+    # Figure
+    fig, ax = plt.subplots(figsize=(9, 2.2))
+
+    # Shaded risk bands (no custom colors, just alpha)
+    for i, (lo, hi, name) in enumerate(bands, start=1):
+        ax.axvspan(lo, hi, ymin=0.35, ymax=0.65, alpha=0.08 * i)
+        ax.text((lo + hi) / 2, 0.2, name, ha='center', va='center', fontsize=9)
+
+    # Axis styling
+    ax.set_xlim(0, 12)
+    ax.set_xticks(range(0, 13))
+    ax.set_ylim(0, 1)
+    ax.set_yticks([])
+
+    # Marker for current UV
+    ax.plot([uv], [0.5], marker='o')
+    ax.text(uv, 0.78, f"UV {uv:.0f}", ha='center', va='bottom', fontsize=10)
+
+    # Titles + advice
+    ax.set_title(f"UV Index Now — {weather_data.get('location','')}", pad=8)
+    ax.text(0.5, -0.35, advice, ha='center', va='top', fontsize=10, transform=ax.transAxes)
+
+    plt.tight_layout()
+    if output_type == 'figure':
+        return fig
+    plt.show(); plt.close(fig)
+    return None
+
+
 Me: Can you please give me some example data that I can test the code successfully?
 
 AI: Here are some sample datasets that match your app’s schema. Use them to test your visualisation functions without calling the API.
